@@ -19,7 +19,7 @@ struct Person {
     float uY = 0.0f;
 
     PersonState state;
-    float speed = 0.6f;
+    float speed = 0.65f;
     bool movingToY = true;
 
     unsigned int texture;

@@ -4,7 +4,6 @@
 #include <array>
 #include <vector>
 
-// Enum stanje sedišta
 enum class SeatState {
     AVAILABLE = 0,
     RESERVED = 1,

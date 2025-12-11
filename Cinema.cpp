@@ -2,7 +2,6 @@
 #include <random>
 #include <vector>
 
-// Konstruktor – inicijalizacija podrazumevanim vrednostima
 Cinema::Cinema()
     : cinemaState(CinemaState::SELLING), color{255, 255, 255}, frameCounter(0)
 {
@@ -14,7 +13,6 @@ Cinema::Cinema()
     }
 }
 
-// Metoda menja stanje sedišta
 void Cinema::ToggleSeat(int x, int y) {
     if (cinemaState == CinemaState::SELLING) {
         SeatState state = seats[x][y];
@@ -27,21 +25,17 @@ void Cinema::ToggleSeat(int x, int y) {
     }
 }
 
-// Kupovina određenog broja sedišta
 void Cinema::BuySeats(int number) {
     if (number < 1 || number > 9) return;
 
     if (cinemaState != CinemaState::SELLING) return;
 
-    // Prolazi kroz redove od poslednjeg ka prvom
     for (int r = ROWS - 1; r >= 0; r--) {
 
-        // Pretraga od desne ka levoj
         for (int c = COLS - number; c >= 0; c--) {
 
             bool allAvailable = true;
 
-            // Provera segmenta c..c+number-1
             for (int k = 0; k < number; k++) {
                 if (seats[r][c + k] != SeatState::AVAILABLE) {
                     allAvailable = false;
@@ -49,17 +43,14 @@ void Cinema::BuySeats(int number) {
                 }
             }
 
-            // Ako je segment validan — kupi sedišta
             if (allAvailable) {
                 for (int k = 0; k < number; k++) {
                     seats[r][c + k] = SeatState::BOUGHT;
                 }
-                return; // gotovo — najefikasnije
+                return;
             }
         }
     }
-
-    // Ako nije našao — ništa se ne menja (silent fail)
 }
 
 void Cinema::ResetSeats()
@@ -148,7 +139,6 @@ std::array<int, 3> Cinema::GetColor()
     return color;
 }
 
-// Menjanje moda kina
 void Cinema::SwitchState() {
     if (cinemaState == CinemaState::SELLING) {
         cinemaState = CinemaState::ENTERING;
@@ -164,7 +154,6 @@ void Cinema::SwitchState() {
     }
 }
 
-// Uvećava brojač frejmova
 void Cinema::IncreaseFrameCounter() {
     frameCounter = (frameCounter + 1) % 20;
     if (frameCounter == 0) {
@@ -174,7 +163,6 @@ void Cinema::IncreaseFrameCounter() {
     }
 }
 
-// Resetuje brojač frejmova
 void Cinema::ResetFrameCounter() {
     frameCounter = 0;
     color[0] = 255;

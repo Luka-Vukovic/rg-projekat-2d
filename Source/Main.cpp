@@ -22,6 +22,8 @@ unsigned int VAOperson, VBOperson;
 unsigned int personTexture;
 bool peopleInitialized = false;
 
+unsigned int watermarkTexture;
+
 GLFWcursor* cursor;
 
 #include <vector>
@@ -31,7 +33,7 @@ struct SeatBounds {
     float x2, y2; // gornji desni ugao
 };
 
-std::vector<SeatBounds> seatBounds; // Čuva granice svih sedišta
+std::vector<SeatBounds> seatBounds;
 
 std::vector<float> GenerateSeatQuads(
     float startX,
@@ -47,9 +49,8 @@ std::vector<float> GenerateSeatQuads(
     float seatWidth = seatHeight * aspectRatio;
 
     std::vector<float> data;
-    data.reserve(ROWS * COLS * 16); // 4 temena × (x,y,s,t) = 16
+    data.reserve(ROWS * COLS * 16);
 
-    // Očistimo postojeće granice
     seatBounds.clear();
     seatBounds.reserve(ROWS * COLS);
 
@@ -71,7 +72,6 @@ std::vector<float> GenerateSeatQuads(
             float x4 = x;
             float y4 = y - seatHeight;
 
-            // push 4 verteksa
             data.insert(data.end(), {
                 x1, y1, 0.0f, 1.0f,
                 x2, y2, 1.0f, 1.0f,
@@ -79,7 +79,6 @@ std::vector<float> GenerateSeatQuads(
                 x4, y4, 0.0f, 0.0f
                 });
 
-            // Sačuvaj granice sedišta za detekciju klika
             SeatBounds bounds;
             bounds.x1 = x1;          // leva granica
             bounds.y1 = y4;          // donja granica (jer y ide na dole)
@@ -121,7 +120,6 @@ bool IsClickOnSeat(float glX, float glY, int& row, int& col) {
     return false;
 }
 
-// Callback funkcija za klik mišem
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         double mouseX, mouseY;
@@ -139,9 +137,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
 bool numberKeysActive[10] = { false };
 
-// Callback funkcija za tastaturu
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    // Brojevi 1-9
     for (int i = 1; i <= 9; i++) {
         if (key == GLFW_KEY_0 + i || key == GLFW_KEY_KP_0 + i) {
             if (action == GLFW_PRESS && !numberKeysActive[i]) {
@@ -154,7 +150,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         }
     }
 
-    // ESC za izlaz
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
@@ -230,6 +225,37 @@ void formScreenVAO(unsigned int& VAOscreen, unsigned int& VBOscreen)
 
     // layout(location = 1) = vec2 aTex;
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void formWatermarkVAO(unsigned int& VAOwatermark, unsigned int& VBOwatermark)
+{
+    float x1 = -0.96f;
+    float y1 = -0.75f;
+
+    float vertices[] = {
+         x1, y1, 0.0f, 1.0f, // gornje levo teme
+         x1, y1 - 0.1852f, 0.0f, 0.0f, // donje levo teme
+         x1 + 0.3125f, y1 - 0.1852f, 1.0f, 0.0f, // donje desno teme 
+         x1 + 0.3125f, y1, 1.0f, 1.0f, // gornje desno teme
+    };
+
+    glGenVertexArrays(1, &VAOwatermark);
+    glGenBuffers(1, &VBOwatermark);
+
+    glBindVertexArray(VAOwatermark);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBOwatermark);
+    glBufferData(GL_ARRAY_BUFFER, 4 * 4 * sizeof(float), vertices, GL_STATIC_DRAW);
+
+    // layout(location = 0) = vec2 aPos;
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // layout(location = 1) = vec2 aTex;
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
@@ -375,6 +401,25 @@ void drawDoor(unsigned shader, unsigned int VAOdoor)
     glUseProgram(0);
 }
 
+void drawWatermark(unsigned shader, unsigned int VAOwatermark)
+{
+    glUseProgram(shader);
+    glBindVertexArray(VAOwatermark);
+
+    // Izvuci lokaciju jednom
+    GLint uTexLoc = glGetUniformLocation(shader, "uTex");
+    glUniform1i(uTexLoc, 0); // Podesi da shader čita sa Texture Unit 0
+
+    glActiveTexture(GL_TEXTURE0);
+    // Ovde samo vezuješ teksturu, shader već zna da čita sa 0
+    glBindTexture(GL_TEXTURE_2D, watermarkTexture);
+
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void InitializePeople(float seatWidth, float seatHeight, float aspect) {
     people.clear();
 
@@ -428,7 +473,6 @@ void UpdatePeoplePositions(float deltaTime, float aspect) {
         }
 
         if (person.state == PersonState::WALKING_TO_SEAT) {
-            // ULAZAK: Y -> X
             if (person.movingToY) {
                 // Prvo po Y osi (vertikalno)
                 float delta = person.speed * deltaTime;
@@ -441,7 +485,7 @@ void UpdatePeoplePositions(float deltaTime, float aspect) {
             }
             else {
                 // Onda po X osi (horizontalno)
-                float delta = person.speed * deltaTime * aspect;
+                float delta = person.speed * deltaTime * aspect * 1.2;
                 person.uX += delta;
 
                 if (person.uX >= 1.0f) {
@@ -451,10 +495,9 @@ void UpdatePeoplePositions(float deltaTime, float aspect) {
             }
         }
         else if (person.state == PersonState::WALKING_TO_EXIT) {
-            // IZLAZAK: X -> Y
             if (!person.movingToY) {
                 // Prvo po X osi (horizontalno)
-                float delta = -person.speed * deltaTime * aspect; // negativan smer
+                float delta = -person.speed * deltaTime * aspect * 1.2; // negativan smer
                 person.uX += delta;
 
                 if (person.uX <= 0.0f) {
@@ -480,8 +523,7 @@ void SetupPersonForExit() {
     for (auto& person : people) {
         if (person.state == PersonState::SITTING) {
             person.state = PersonState::WALKING_TO_EXIT;
-            person.movingToY = false; // prvo horizontalno (X), pa onda vertikalno (Y)
-            // uX = 1.0, uY = 1.0 (jer je na sedištu)
+            person.movingToY = false;
         }
     }
 }
@@ -584,6 +626,7 @@ int main()
     preprocessTexture(seatTextures[3], "Resources/bought_seat.png");
     preprocessTexture(seatTextures[4], "Resources/bought_sitting_seat.png");
     preprocessTexture(personTexture, "Resources/person.png");
+    preprocessTexture(watermarkTexture, "Resources/watermark.png");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -596,6 +639,7 @@ int main()
     unsigned int screenShader = createShader("color.vert", "color.frag");
     unsigned int rectShader = createShader("rect.vert", "rect.frag");
     unsigned int personShader = createShader("person.vert", "person.frag");
+    unsigned int watermarkShader = createShader("watermark.vert", "watermark.frag");
 
     float seatWidth = 0.1f * aspect;
     float seatHeight = 0.1f;
@@ -627,6 +671,10 @@ int main()
 
     formDarkVAO(VAOdark, VBOdark);
 
+    unsigned int VAOwatermark, VBOwatermark;
+
+    formWatermarkVAO(VAOwatermark, VBOwatermark);
+
     bool hasOpenedDoor = false;
 
     while (!glfwWindowShouldClose(window))
@@ -648,6 +696,7 @@ int main()
         if (cinema.GetCinemaState() == CinemaState::SELLING) {
             drawDark(rectShader, VAOdark);
         }
+        drawWatermark(watermarkShader, VAOwatermark);
 
         float deltaTime = 1.0f / 75.0f;
 
