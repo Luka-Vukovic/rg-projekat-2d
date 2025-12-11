@@ -48,6 +48,7 @@ public:
     SeatState GetSeatState(int x, int y);
     CinemaState GetCinemaState();
     std::vector<std::pair<int, int>> GetTakenSeats();
+    std::vector<std::pair<int, int>> GetSelectedSeats();
     void GetRandomTakenSeats();
     void SitOnSeats();
     void StandUp();

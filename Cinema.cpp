@@ -96,6 +96,11 @@ std::vector<std::pair<int, int>> Cinema::GetTakenSeats() {
     return taken;
 }
 
+std::vector<std::pair<int, int>> Cinema::GetSelectedSeats()
+{
+    return selectedSeats;
+}
+
 void Cinema::GetRandomTakenSeats() {
     std::vector<std::pair<int, int>> taken = GetTakenSeats();
 

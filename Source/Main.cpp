@@ -1,15 +1,11 @@
 ﻿#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <random>
 
 #include "../Header/Util.h"
 #include "../Cinema.hpp"
-
-// Main fajl funkcija sa osnovnim komponentama OpenGL programa
-
-// Projekat je dozvoljeno pisati počevši od ovog kostura
-// Toplo se preporučuje razdvajanje koda po fajlovima (i eventualno potfolderima) !!!
-// Srećan rad!
+#include "../Person.hpp"
 
 int screenWidth = 800;
 int screenHeight = 800;
@@ -19,14 +15,12 @@ double enteringStart = NULL;
 double playingStart = NULL;
 double leavingStart = NULL;
 
-/*
-unsigned availableTexture;
-unsigned reservedTexture;
-unsigned boughtTexture;
-unsigned reservedSittingTexture;
-unsigned boughtSittingTexture; */
-
 unsigned seatTextures[5];
+
+std::vector<Person> people;
+unsigned int VAOperson, VBOperson;
+unsigned int personTexture;
+bool peopleInitialized = false;
 
 GLFWcursor* cursor;
 
@@ -170,6 +164,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             enteringStart = glfwGetTime();
             cinema.SwitchState();
             cinema.GetRandomTakenSeats();
+            peopleInitialized = false;
         }
     }
 }
@@ -235,6 +230,34 @@ void formScreenVAO(unsigned int& VAOscreen, unsigned int& VBOscreen)
 
     // layout(location = 1) = vec2 aTex;
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void formDarkVAO(unsigned int& VAOdark, unsigned int& VBOdark)
+{
+    float vertices[] = {
+         -1.0f, 1.0f, 0.2f, 0.2f, 0.2f, 0.5f, // gornje levo teme
+         -1.0f, -1.0f, 0.2f, 0.2f, 0.2f, 0.5f, // donje levo teme
+         1.0f, -1.0f, 0.2f, 0.2f, 0.2f, 0.5f, // donje desno teme
+         1.0f, 1.0f, 0.2f, 0.2f, 0.2f, 0.5f, // gornje desno teme
+    };
+
+    glGenVertexArrays(1, &VAOdark);
+    glGenBuffers(1, &VBOdark);
+
+    glBindVertexArray(VAOdark);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBOdark);
+    glBufferData(GL_ARRAY_BUFFER, 4 * 6 * sizeof(float), vertices, GL_STATIC_DRAW);
+
+    // layout(location = 0) = vec2 aPos;
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // layout(location = 1) = vec2 aTex;
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
@@ -330,6 +353,17 @@ void drawScreen(unsigned shader, unsigned int VAOscreen)
     glUseProgram(0);
 }
 
+void drawDark(unsigned shader, unsigned int VAOdark)
+{
+    glUseProgram(shader);
+    glBindVertexArray(VAOdark);
+
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void drawDoor(unsigned shader, unsigned int VAOdoor)
 {
     glUseProgram(shader);
@@ -341,6 +375,182 @@ void drawDoor(unsigned shader, unsigned int VAOdoor)
     glUseProgram(0);
 }
 
+void InitializePeople(float seatWidth, float seatHeight, float aspect) {
+    people.clear();
+
+    std::vector<std::pair<int, int>> selectedSeats;
+    selectedSeats = cinema.GetSelectedSeats();
+
+    if (selectedSeats.empty()) return;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> doorDist(-0.88f, -0.62f);
+
+    for (const auto& seat : selectedSeats) {
+        Person person;
+        person.seatRow = seat.first;
+        person.seatCol = seat.second;
+        person.state = PersonState::WALKING_TO_SEAT;
+        person.movingToY = true;
+        person.uX = 0.0f;
+        person.uY = 0.0f;
+
+        float seatX = -0.35f + seat.second * (seatWidth + 0.02f);
+        float seatY = 0.17f - seat.first * (seatHeight + 0.08f);
+
+        person.seatPosX = seatX + seatWidth / 2.0f;
+        person.seatPosY = seatY + seatHeight;
+
+        float doorX = doorDist(gen);
+        person.doorPosX = doorX;
+        person.doorPosY = 1.10f;
+
+        person.texture = personTexture;
+        people.push_back(person);
+    }
+
+    peopleInitialized = true;
+}
+
+void UpdatePeoplePositions(float deltaTime, float aspect) {
+    CinemaState currentState = cinema.GetCinemaState();
+
+    if (currentState != CinemaState::ENTERING &&
+        currentState != CinemaState::LEAVING) {
+        return;
+    }
+
+    for (auto& person : people) {
+        if (person.state != PersonState::WALKING_TO_SEAT &&
+            person.state != PersonState::WALKING_TO_EXIT) {
+            continue;
+        }
+
+        if (person.state == PersonState::WALKING_TO_SEAT) {
+            // ULAZAK: Y -> X
+            if (person.movingToY) {
+                // Prvo po Y osi (vertikalno)
+                float delta = person.speed * deltaTime;
+                person.uY += delta;
+
+                if (person.uY >= 1.0f) {
+                    person.uY = 1.0f;
+                    person.movingToY = false; // pređi na X kretanje
+                }
+            }
+            else {
+                // Onda po X osi (horizontalno)
+                float delta = person.speed * deltaTime * aspect;
+                person.uX += delta;
+
+                if (person.uX >= 1.0f) {
+                    person.uX = 1.0f;
+                    person.state = PersonState::SITTING; // sedi
+                }
+            }
+        }
+        else if (person.state == PersonState::WALKING_TO_EXIT) {
+            // IZLAZAK: X -> Y
+            if (!person.movingToY) {
+                // Prvo po X osi (horizontalno)
+                float delta = -person.speed * deltaTime * aspect; // negativan smer
+                person.uX += delta;
+
+                if (person.uX <= 0.0f) {
+                    person.uX = 0.0f;
+                    person.movingToY = true; // pređi na Y kretanje
+                }
+            }
+            else {
+                // Onda po Y osi (vertikalno)
+                float delta = -person.speed * deltaTime; // negativan smer
+                person.uY += delta;
+
+                if (person.uY <= 0.0f) {
+                    person.uY = 0.0f;
+                    person.state = PersonState::EXITED; // izašao
+                }
+            }
+        }
+    }
+}
+
+void SetupPersonForExit() {
+    for (auto& person : people) {
+        if (person.state == PersonState::SITTING) {
+            person.state = PersonState::WALKING_TO_EXIT;
+            person.movingToY = false; // prvo horizontalno (X), pa onda vertikalno (Y)
+            // uX = 1.0, uY = 1.0 (jer je na sedištu)
+        }
+    }
+}
+
+void ResetPeople() {
+    people.clear();
+    peopleInitialized = false;
+}
+
+void formPersonVAO(float aspect) {
+    float personWidth = 0.07f * aspect;
+    float personHeight = 0.07f;
+
+    float vertices[] = {
+        -personWidth, -personHeight, 0.0f, 0.0f,
+         personWidth, -personHeight, 1.0f, 0.0f,
+         personWidth,  personHeight, 1.0f, 1.0f,
+        -personWidth,  personHeight, 0.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &VAOperson);
+    glGenBuffers(1, &VBOperson);
+
+    glBindVertexArray(VAOperson);
+    glBindBuffer(GL_ARRAY_BUFFER, VBOperson);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void DrawPeople(unsigned personShader) {
+    if (people.empty()) return;
+
+    glUseProgram(personShader);
+    glBindVertexArray(VAOperson);
+
+    GLint texLoc = glGetUniformLocation(personShader, "uTexture");
+    glUniform1i(texLoc, 0);
+    glActiveTexture(GL_TEXTURE0);
+
+    for (const auto& person : people) {
+        if (person.state == PersonState::EXITED) continue;
+
+        glBindTexture(GL_TEXTURE_2D, person.texture);
+
+        GLint uXLoc = glGetUniformLocation(personShader, "uX");
+        glUniform1f(uXLoc, person.uX);
+
+        GLint uYLoc = glGetUniformLocation(personShader, "uY");
+        glUniform1f(uYLoc, person.uY);
+
+        GLint uDoorPosLoc = glGetUniformLocation(personShader, "uDoorPos");
+        glUniform2f(uDoorPosLoc, person.doorPosX, person.doorPosY);
+
+        GLint uSeatPosLoc = glGetUniformLocation(personShader, "uSeatPos");
+        glUniform2f(uSeatPosLoc, person.seatPosX, person.seatPosY);
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
 
 int main()
 {
@@ -373,6 +583,7 @@ int main()
     preprocessTexture(seatTextures[2], "Resources/reserved_sitting_seat.png");
     preprocessTexture(seatTextures[3], "Resources/bought_seat.png");
     preprocessTexture(seatTextures[4], "Resources/bought_sitting_seat.png");
+    preprocessTexture(personTexture, "Resources/person.png");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -384,6 +595,10 @@ int main()
     unsigned int seatShader = createShader("seat.vert", "seat.frag");
     unsigned int screenShader = createShader("color.vert", "color.frag");
     unsigned int rectShader = createShader("rect.vert", "rect.frag");
+    unsigned int personShader = createShader("person.vert", "person.frag");
+
+    float seatWidth = 0.1f * aspect;
+    float seatHeight = 0.1f;
 
     std::vector<float> seats = GenerateSeatQuads(
         -0.35f,
@@ -406,6 +621,12 @@ int main()
 
     formDoorVAO(VAOdoor, VBOdoor, aspect);
 
+    formPersonVAO(aspect);
+
+    unsigned int VAOdark, VBOdark;
+
+    formDarkVAO(VAOdark, VBOdark);
+
     bool hasOpenedDoor = false;
 
     while (!glfwWindowShouldClose(window))
@@ -421,8 +642,21 @@ int main()
         drawSeats(seatShader, VAOseats);
         drawScreen(screenShader, VAOscreen);
         drawDoor(rectShader, VAOdoor);
+        if (cinema.GetCinemaState() == CinemaState::ENTERING || cinema.GetCinemaState() == CinemaState::LEAVING) {
+            DrawPeople(personShader);   
+        }
+        if (cinema.GetCinemaState() == CinemaState::SELLING) {
+            drawDark(rectShader, VAOdark);
+        }
+
+        float deltaTime = 1.0f / 75.0f;
 
         if (enteringStart != NULL) {
+            if (!peopleInitialized) {
+                InitializePeople(seatWidth, seatHeight, aspect);
+            }
+            UpdatePeoplePositions(deltaTime, aspect);
+
             if (glfwGetTime() - enteringStart > 5) {
                 enteringStart = NULL;
                 cinema.SwitchState();
@@ -444,17 +678,22 @@ int main()
                 formDoorVAO(VAOdoor, VBOdoor, aspect);
                 cinema.StandUp();
                 leavingStart = glfwGetTime();
+
+                SetupPersonForExit();
             }
             else {
                 cinema.IncreaseFrameCounter();
             }
         }
         else if (leavingStart != NULL) {
+            UpdatePeoplePositions(deltaTime, aspect);
+
             if (glfwGetTime() - leavingStart > 5) {
                 leavingStart = NULL;
                 cinema.SwitchState();
                 formDoorVAO(VAOdoor, VBOdoor, aspect);
                 cinema.ResetSeats();
+                ResetPeople();
             }
         }
 

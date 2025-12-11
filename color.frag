@@ -6,6 +6,7 @@ out vec4 outCol;
 uniform float uR;
 uniform float uG;
 uniform float uB;
+uniform float uA;
 
 void main()
 {
