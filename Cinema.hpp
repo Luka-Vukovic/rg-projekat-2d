@@ -49,6 +49,7 @@ public:
     std::vector<std::pair<int, int>> GetTakenSeats();
     std::vector<std::pair<int, int>> GetSelectedSeats();
     void GetRandomTakenSeats();
+    void ResetSelectedSeats();
     void SitOnSeats();
     void StandUp();
     std::array<int, 3> GetColor();

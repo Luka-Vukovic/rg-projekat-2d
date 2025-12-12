@@ -742,6 +742,7 @@ int main()
                 cinema.SwitchState();
                 formDoorVAO(VAOdoor, VBOdoor, aspect);
                 cinema.ResetSeats();
+                cinema.ResetSelectedSeats();
                 ResetPeople();
             }
         }
